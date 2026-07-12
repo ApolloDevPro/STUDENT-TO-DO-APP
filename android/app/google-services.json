@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "724311074232",
+    "project_id": "studenttodoapp-80d20",
+    "storage_bucket": "studenttodoapp-80d20.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:724311074232:android:ae6c9cebdaea93b7d59b4d",
+        "android_client_info": {
+          "package_name": "com.example.todo_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByvSeZ7AEpS0UaZbnZjnpAtEveJYx8spI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
