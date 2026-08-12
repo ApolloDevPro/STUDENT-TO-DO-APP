@@ -2,62 +2,124 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/subject.dart';
 import '../providers/subject_provider.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/fade_in.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/responsive_scaffold.dart';
 
 class SubjectsScreen extends StatelessWidget {
   const SubjectsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Subjects'),
-      ),
-      body: Consumer<SubjectProvider>(
-        builder: (context, subjectProvider, child) {
-          if (subjectProvider.subjects.isEmpty) {
-            return const Center(
-              child: Text('No subjects yet. Add one!'),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: subjectProvider.subjects.length,
-            itemBuilder: (context, index) {
-              final subject = subjectProvider.subjects[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: subject.color,
-                    child: Text(
-                      subject.code[0].toUpperCase(),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  title: Text(subject.name),
-                  subtitle: Text(subject.code),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () {
-                      subjectProvider.deleteSubject(subject.id);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Subject deleted')),
-                      );
-                    },
-                  ),
-                  onTap: () => _showSubjectDialog(context, subject: subject),
-                ),
-              );
-            },
-          );
-        },
-      ),
+    return ResponsiveScaffold(
+      title: 'My Subjects',
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'subjectsScreenFAB',
         onPressed: () => _showSubjectDialog(context),
         icon: const Icon(Icons.add),
         label: const Text('New Subject'),
+      ),
+      builder: (context, deviceType) => Consumer<SubjectProvider>(
+        builder: (context, subjectProvider, child) {
+          if (subjectProvider.subjects.isEmpty) {
+            return const EmptyState(
+              icon: Icons.school_outlined,
+              title: 'No subjects yet',
+              message:
+                  'Add your courses to organize tasks by subject. Tap "New Subject" to begin.',
+            );
+          }
+
+          final subjects = subjectProvider.subjects;
+          return GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: deviceType.isDesktop
+                  ? 4
+                  : deviceType.isTablet
+                      ? 3
+                      : 1,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: deviceType.isMobile ? 4.5 : 2.4,
+            ),
+            itemCount: subjects.length,
+            itemBuilder: (context, index) =>
+                _buildSubjectCard(context, subjects[index], index),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSubjectCard(
+    BuildContext context,
+    Subject subject,
+    int index,
+  ) {
+    return FadeIn(
+      delay: Duration(milliseconds: 40 * index),
+      child: GlassCard(
+        padding: EdgeInsets.zero,
+        child: ListTile(
+          leading: Hero(
+            tag: 'subject-${subject.id}',
+            child: CircleAvatar(
+              backgroundColor: subject.color,
+              child: Text(
+                subject.code.isNotEmpty
+                    ? subject.code[0].toUpperCase()
+                    : subject.name.isNotEmpty
+                        ? subject.name[0].toUpperCase()
+                        : '?',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+          title: Text(subject.name),
+          subtitle: Text(subject.code),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () => _confirmDelete(context, subject),
+          ),
+          onTap: () => _showSubjectDialog(context, subject: subject),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, Subject subject) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${subject.name}?'),
+        content: const Text(
+          'This removes the subject. Tasks already linked to it will stay, '
+          'but will no longer be grouped under this subject.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final provider =
+                  Provider.of<SubjectProvider>(ctx, listen: false);
+              provider.deleteSubject(subject.id);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Subject deleted')),
+              );
+            },
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }
@@ -133,7 +195,8 @@ class SubjectsScreen extends StatelessWidget {
                   return;
                 }
 
-                final subjectProvider = Provider.of<SubjectProvider>(context, listen: false);
+                final subjectProvider =
+                    Provider.of<SubjectProvider>(context, listen: false);
 
                 if (subject == null) {
                   subjectProvider.addSubject(Subject(

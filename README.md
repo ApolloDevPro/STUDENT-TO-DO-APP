@@ -53,22 +53,30 @@ The entry point (`lib/main.dart`) initializes Firebase and the notification serv
 
 ### Tasks
 - Create, edit, delete, and toggle completion from the UI.
-- Fields: title, description, subject, priority (low/medium/high), status (pending/in progress/completed), due date, and assignment flag.
-- **Filters**: All, Pending, Completed, Assignments, Due Today, Upcoming.
+- Fields: title, description, subject, priority (low/medium/high), **status (pending/in progress/completed)**, due date, and assignment flag.
+- **Filters**: All, Pending, In Progress, Completed, Assignments, Due Today, Upcoming.
 - **Subject filter chips** for narrowing tasks by course.
-- **Swipe-to-delete** (dismiss to the left) with an undo snackbar.
+- **Sorting**: default, due date, priority, or newest-first.
+- **Swipe-to-delete** (dismiss to the left) **with an undo action**.
 - **Priority indicator** (colored dot) and overdue highlighting (red dates).
-- **Full-text search** across title and description (from the dashboard search).
+- **Full-text search** across title and description — tapping a result opens that task for editing directly.
 
 ### Subjects
 - Create, edit, and delete subjects with a **name**, **course code**, and a **custom color**.
+- Deleting a subject asks for confirmation first.
 - Subject color is reused everywhere (dashboard, task cards, filters) for visual grouping.
 - One-tap access to edit via tapping a subject row.
 
 ### Reminders
 - Local notifications scheduled for each task's due date.
 - A **reminders toggle** in Profile that re-schedules or cancels all notifications globally.
+- A **reminder lead time** setting (at due time, 15 min, 1 hour, 3 hours, 1 day, or 1 week before).
+- **Tapping a notification opens the task** in a detail screen where it can be edited or deleted.
 - Past-due and completed tasks are automatically skipped.
+
+### Cloud Sync
+- Tasks and subjects sync to **Cloud Firestore** under `users/{uid}/tasks` and `users/{uid}/subjects`.
+- The app is local-first: everything still works offline via `shared_preferences`, and a **last-write-wins merge** (using each item's `updatedAt`) reconciles the two sides on startup/login. Data survives app reinstall as long as you're signed in.
 
 ### Theming
 - Light, dark, and system theme modes via `ThemeProvider`.
@@ -122,12 +130,13 @@ Because `TaskProvider` and `SubjectProvider` depend on the current user, they ar
 | UI framework | Flutter / Material 3 | Cross-platform UI |
 | State management | `provider` (^6.1.5) | Dependency injection & reactive UI |
 | Authentication | `firebase_core`, `firebase_auth`, `google_sign_in` | Email/password + Google sign-in |
-| Local storage | `shared_preferences` | Persist tasks, subjects, theme, reminders |
+| Local storage | `shared_preferences` | Persist tasks, subjects, theme, reminders (offline cache) |
+| Cloud sync | `cloud_firestore` | Mirror tasks/subjects to Firestore per user |
 | Notifications | `flutter_local_notifications`, `timezone` | Scheduled due-date reminders |
 | Formatting | `intl` | Date/number formatting helpers |
 | Icons | `cupertino_icons` | iOS-style icons |
 
-> **Note:** `cloud_firestore` is listed in `pubspec.yaml` but is **not currently used** — tasks and subjects are stored locally (see [Persistence](#persistence)).
+> **Note:** `cloud_firestore` is used for optional cloud sync (see [Persistence](#persistence)); local storage remains the primary source of truth.
 
 ---
 
@@ -135,25 +144,39 @@ Because `TaskProvider` and `SubjectProvider` depend on the current user, they ar
 
 ```
 lib/
-├── main.dart                         # Entry point, providers, AuthGate
+├── main.dart                         # Entry point, providers, AuthGate, notification tap routing
 ├── models/
-│   ├── task.dart                     # Task model, enums, JSON (de)serialization
+│   ├── task.dart                     # Task model, enums, JSON (de)serialization, sorting
 │   └── subject.dart                  # Subject model with color, JSON (de)serialization
 ├── providers/
 │   ├── auth_provider.dart            # Firebase auth + Google sign-in logic
-│   ├── task_provider.dart            # Task CRUD, stats, search, filters, reminders
-│   ├── subject_provider.dart         # Subject CRUD
+│   ├── task_provider.dart            # Task CRUD, stats, search, filters, reminders, sync
+│   ├── subject_provider.dart         # Subject CRUD + sync
 │   └── theme_provider.dart           # Theme mode state + persistence
 ├── services/
-│   └── notification_service.dart     # Singleton wrapping local notifications
-└── screens/
-    ├── login_screen.dart             # Email/password + Google login
-    ├── register_screen.dart          # Email/password sign up
-    ├── main_screen.dart              # Bottom navigation host (IndexedStack)
-    ├── dashboard_screen.dart         # Stats, progress, search delegate
-    ├── tasks_screen.dart             # Task list, filters, create/edit dialog
-    ├── subjects_screen.dart          # Subject list, create/edit dialog
-    └── profile_screen.dart           # Account, reminders, theme, sign out
+│   ├── notification_service.dart     # Singleton wrapping local notifications
+│   ├── cloud_sync_service.dart       # Firestore mirror (push + fetch)
+│   └── sync_merge.dart               # Last-write-wins merge logic (pure, unit-tested)
+├── screens/
+│   ├── login_screen.dart             # Email/password + Google login
+│   ├── register_screen.dart          # Email/password sign up
+│   ├── main_screen.dart              # Bottom navigation host (IndexedStack)
+│   ├── dashboard_screen.dart         # Stats, progress, search delegate
+│   ├── tasks_screen.dart             # Task list, filters, sorting, create/edit dialog
+│   ├── subjects_screen.dart          # Subject list, create/edit dialog
+│   ├── task_detail_screen.dart       # Opened from notifications; edit/delete a task
+│   └── profile_screen.dart           # Account, reminders, lead time, theme, sign out
+├── theme/
+│   └── custom_theme.dart
+├── utils/
+│   └── ids.dart                      # Collision-free id generation
+└── widgets/
+    ├── task_dialog.dart              # Shared create/edit task dialog (used everywhere)
+    ├── empty_state.dart
+    ├── fade_in.dart
+    ├── glass_card.dart
+    ├── gradient_app_bar.dart
+    └── responsive_scaffold.dart
 ```
 
 ---
@@ -163,7 +186,7 @@ lib/
 ### `Task` (`lib/models/task.dart`)
 | Field | Type | Notes |
 | --- | --- | --- |
-| `id` | `String` | Unique; generated from `DateTime.now().millisecondsSinceEpoch`. |
+| `id` | `String` | Unique; random hex id (see `lib/utils/ids.dart`). |
 | `title` | `String` | Required. |
 | `description` | `String?` | Optional. |
 | `subjectId` | `String?` | Links to a `Subject` (nullable). |
@@ -172,8 +195,9 @@ lib/
 | `createdAt` | `DateTime` | Required. |
 | `dueDate` | `DateTime?` | Optional; drives notifications & overdue logic. |
 | `isAssignment` | `bool` | Defaults to `false`. |
+| `updatedAt` | `DateTime` | Last-change timestamp; used for cloud merge. Falls back to `createdAt` for old records. |
 
-Both `TaskPriority` and `TaskStatus` are stored as their enum index in JSON for compactness. `toJson()` / `fromJson()` handle (de)serialization, including ISO-8601 date strings.
+`TaskPriority` and `TaskStatus` are stored as their enum index in JSON for compactness. `toJson()` / `fromJson()` handle (de)serialization, including ISO-8601 date strings. `Task.sortBy(list, mode)` provides the sort modes used on the Tasks screen.
 
 ### `Subject` (`lib/models/subject.dart`)
 | Field | Type | Notes |
@@ -182,6 +206,7 @@ Both `TaskPriority` and `TaskStatus` are stored as their enum index in JSON for 
 | `name` | `String` | Subject display name. |
 | `code` | `String` | Course code, e.g. `CS101`. |
 | `colorValue` | `int` | ARGB color stored as an integer; `color` getter returns a `Color`. |
+| `updatedAt` | `DateTime` | Last-change timestamp; used for cloud merge. |
 
 ---
 
@@ -189,8 +214,9 @@ Both `TaskPriority` and `TaskStatus` are stored as their enum index in JSON for 
 
 The app uses `provider` with `ChangeNotifier`. Key points:
 
-- **`AuthProvider`** wraps `FirebaseAuth`. It exposes `currentUser`, `isLoggedIn`, and a `Stream<User?>` (`authStateChanges`) that the `AuthGate` consumes. All auth methods return a `String?` error message (null = success), keeping UI logic simple.
-- **`TaskProvider`** and **`SubjectProvider`** are created via `ChangeNotifierProxyProvider`, so they automatically receive the signed-in user's `uid`. Each persists data under a key like `tasks_<uid>` (or `tasks_guest` when no user).
+- **`AuthProvider`** wraps `FirebaseAuth`. It exposes `currentUser`, `isLoggedIn`, `isEmailVerified`, and a `Stream<User?>` (`authStateChanges`) that the `AuthGate` consumes. All auth methods return a `String?` error message (null = success), keeping UI logic simple.
+- **`TaskProvider`** and **`SubjectProvider`** are created via `ChangeNotifierProxyProvider`, so they automatically receive the signed-in user's `uid`. Each persists data under a key like `tasks_<uid>` (or `tasks_guest` when no user) and pushes/pulls from Firestore through `CloudSyncService`.
+- **`CloudSyncService`** is a singleton that mirrors local changes to Firestore and fetches the remote list. The merge is computed by `sync_merge.dart` (last-write-wins by `updatedAt`).
 - **`ThemeProvider`** holds a `ThemeMode` and persists it as an integer.
 - Screens mostly use `Consumer` / `Consumer2` widgets so only the relevant subtree rebuilds when state changes.
 
@@ -233,24 +259,31 @@ This should be the **Web** client ID from Firebase Console → Authentication �
 - Presents the welcome card, four stat cards, and a linear progress indicator (`completionPercentage`).
 - "Quick Actions" navigate to Tasks and Subjects.
 - Shows up to 3 recent tasks, each with a subject-colored avatar and due-date text (red if overdue).
-- AppBar search launches `TaskSearchDelegate`, an in-app `SearchDelegate` that filters tasks by title/description via `taskProvider.searchTasks(query)`.
+- AppBar search launches `TaskSearchDelegate`, an in-app `SearchDelegate` that filters tasks by title/description via `taskProvider.searchTasks(query)`. Tapping a result opens that task for editing.
 
 ### `TasksScreen`
-- Top filter menu (`PopupMenuButton`) with All / Pending / Completed / Assignments / Due Today / Upcoming.
+- Top filter menu (`PopupMenuButton`) with All / Pending / In Progress / Completed / Assignments / Due Today / Upcoming, plus a sort menu (default, due date, priority, newest).
 - Horizontal `FilterChip` row for filtering by subject (only shown if subjects exist).
-- Each task is a `Card` wrapped in a `Dismissible` (swipe left to delete). A `Checkbox` toggles completion; tapping the row opens the edit dialog.
-- Priority is shown as a colored dot (red/orange/green). Assignments show a purple "Assignment" badge. Due dates turn red when overdue.
-- The "New Task" FAB opens a dialog with title, description, subject dropdown, priority, assignment switch, and a date picker.
+- Each task is a `Card` wrapped in a `Dismissible` (swipe left to delete, **undoable**). A `Checkbox` toggles completion; tapping the row opens the edit dialog.
+- Priority is shown as a colored dot (red/orange/green). "In progress" tasks show a blue label. Assignments show a purple "Assignment" badge. Due dates turn red when overdue.
+- The "New Task" FAB opens a dialog with title, description, subject dropdown, priority, **status**, assignment switch, and a date picker (past dates allowed; due date can be cleared).
 
 ### `SubjectsScreen`
 - Lists subjects as cards with a color avatar (first letter of the code), name, and code.
-- Tapping a row opens the edit dialog; the trash icon deletes.
+- Tapping a row opens the edit dialog; the trash icon asks for confirmation before deleting.
 - "New Subject" FAB opens a dialog with name, code, and a color picker (`Wrap` of `CircleAvatar` choices).
+
+### `TaskDetailScreen`
+- Reached by tapping a due-date notification (payload carries the task id).
+- Shows full task details, an "Edit Task" button (opens the shared dialog), and a "Delete Task" button.
 
 ### `ProfileScreen`
 - Shows avatar (initial of display name), name, and email.
 - "Edit display name" dialog updates Firebase display name.
+- **"Change password"** dialog updates the account password.
+- **"Verify email"** (shown when unverified) sends a verification link.
 - Switch for **due-date reminders** (`taskProvider.setRemindersEnabled`).
+- **Reminder lead time** selector (at due time / 15 min / 1 hour / 3 hours / 1 day / 1 week).
 - Switch for **dark theme** (`themeProvider.setThemeMode`).
 - "Log Out" button calls `authProvider.signOut()`, which also signs out of Google.
 
@@ -260,10 +293,11 @@ This should be the **Web** client ID from Firebase Console → Authentication �
 
 `NotificationService` (`lib/services/notification_service.dart`) is a singleton that wraps `FlutterLocalNotificationsPlugin`:
 
-- `init()` initializes time zones, sets up Android/iOS init settings, and requests permission. It uses `@mipmap/ic_launcher` for the Android icon.
-- `scheduleForTask(task)` schedules a notification at the task's `dueDate` (converted to the local `tz.TZDateTime`). It is skipped if the task is completed, has no due date, or the date is in the past.
+- `init(onTaskTap:)` initializes time zones, sets up Android/iOS init settings, and requests permission. It uses `@mipmap/ic_launcher` for the Android icon. On web it's a no-op (local notifications aren't supported there).
+- `scheduleForTask(task, leadMinutes:)` schedules a notification at `dueDate - leadMinutes` (converted to the local `tz.TZDateTime`) and sets the task id as the notification payload. It is skipped if the task is completed, has no due date, or the reminder time is in the past. `reminderDateTime(task, leadMinutes)` is a pure helper for this logic.
 - `cancelForTask(taskId)` / `cancelAll()` remove scheduled notifications.
-- `TaskProvider` calls these whenever a task is added, updated, toggled, deleted, or when reminders are globally enabled/disabled (`_rescheduleAll()`).
+- Tapping a notification routes to `TaskDetailScreen` via the `onTaskTap` callback and the global `navigatorKey`.
+- `TaskProvider` calls these whenever a task is added, updated, toggled, deleted, or when reminder settings change (`_rescheduleAll()`).
 
 > The Android schedule mode is `AndroidScheduleMode.inexact`, meaning the system may deliver the reminder a few minutes around the due time to save battery.
 
@@ -277,14 +311,32 @@ This should be the **Web** client ID from Firebase Console → Authentication �
 
 ## Persistence
 
-All app data except authentication lives in `shared_preferences` (local device storage):
+All app data except authentication lives in `shared_preferences` (local device storage), and tasks/subjects are additionally mirrored to Cloud Firestore when signed in:
 
 - **Tasks** → key `tasks_<uid>` (or `tasks_guest`), JSON list of `Task`.
 - **Subjects** → key `subjects_<uid>` (or `subjects_guest`), JSON list of `Subject`.
 - **Theme mode** → key `themeMode` (int).
 - **Reminders enabled** → key `remindersEnabled` (bool).
+- **Reminder lead time** → key `reminderLeadMinutes` (int).
 
-Because data is keyed per user, switching accounts isolates each user's tasks and subjects. There is **no cloud sync** — uninstalling the app or clearing its data removes everything.
+### Cloud sync behaviour
+- Writes go to the local store first (offline-safe), then `CloudSyncService` mirrors them to `users/{uid}/tasks` and `users/{uid}/subjects` in Firestore.
+- On startup (or after login) the provider fetches the remote list and runs a **last-write-wins merge** keyed on each item's `updatedAt` (`lib/services/sync_merge.dart`). Newer remote items replace local ones; newer local items are pushed back.
+- Because data is keyed per user, switching accounts isolates each user's tasks and subjects. Reinstalling the app no longer loses data as long as the user signs in again.
+
+### Required Firestore security rules
+Add a **Cloud Firestore** database to your Firebase project and set rules so users can only touch their own data:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```
 
 ---
 
@@ -301,7 +353,8 @@ Because data is keyed per user, switching accounts isolates each user's tasks an
    - Android: place `google-services.json` in `android/app/`.
    - iOS: place `GoogleService-Info.plist` in `ios/Runner/`.
 3. Enable **Authentication** providers: **Email/Password** and **Google**.
-4. Replace the Google Web client ID placeholder in `lib/providers/auth_provider.dart` (see [Authentication Flow](#authentication-flow)).
+4. Create a **Cloud Firestore** database and paste the security rules from the [Persistence](#persistence) section.
+5. Replace the Google Web client ID placeholder in `lib/providers/auth_provider.dart` (see [Authentication Flow](#authentication-flow)).
 
 ### Running the App
 ```bash
@@ -322,21 +375,23 @@ flutter build web       # Web
 
 ## Notes & Known Limitations
 
-- **Local-only storage**: Tasks/subjects are not synced to the cloud. The `cloud_firestore` dependency is unused.
-- **Guest mode**: If a user is somehow active without an account, data falls back to `tasks_guest` / `subjects_guest` keys.
+- **Sync is pull-based on startup**: cloud changes made on another device appear after the next app launch/login, not in real time. The local store remains the source of truth while offline.
+- **Merge is last-write-wins**: concurrent edits to the same task on two devices keep whichever was modified last; no field-level merging.
+- **Guest mode**: If a user is somehow active without an account, data falls back to `tasks_guest` / `subjects_guest` keys (and isn't synced).
 - **Inexact scheduling** on Android may shift reminder delivery slightly.
+- **Web**: local notifications are not supported; the notification service is a no-op there.
 - The Google Web client ID is a hard-coded constant that must be set before release.
 
 ---
 
 ## Future Improvements
 
-- Sync tasks/subjects to **Cloud Firestore** for cross-device access (the dependency is already present).
-- Add **recurring tasks** and **subtasks**.
+- Real-time Firestore listeners for cross-device updates without restarting.
+- **Recurring tasks** and **subtasks**.
 - Add **categories/tags** beyond subjects.
 - Support **biometric lock** for the app.
-- Add **unit and widget tests** (only the default `widget_test.dart` exists today).
-- Allow choosing notification **lead time** (e.g., remind 1 day before).
+- Widget/UI tests for the screens (the provider/model/sync logic is covered today).
+- App icon and splash-screen branding.
 
 ---
 

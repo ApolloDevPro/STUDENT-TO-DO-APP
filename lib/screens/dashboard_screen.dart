@@ -4,9 +4,14 @@ import '../providers/task_provider.dart';
 import '../providers/subject_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/task.dart';
-import 'tasks_screen.dart';
-import 'subjects_screen.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/fade_in.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/responsive_scaffold.dart';
+import '../widgets/task_dialog.dart';
 import 'profile_screen.dart';
+import 'subjects_screen.dart';
+import 'tasks_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -36,41 +41,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('📚 Student Dashboard'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: TaskSearchDelegate(),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Consumer2<TaskProvider, SubjectProvider>(
+    return ResponsiveScaffold(
+      title: 'Student Dashboard',
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search),
+          onPressed: () {
+            showSearch(
+              context: context,
+              delegate: TaskSearchDelegate(),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.person),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+          },
+        ),
+      ],
+      builder: (context, deviceType) => Consumer2<TaskProvider, SubjectProvider>(
         builder: (context, taskProvider, subjectProvider, child) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
+                FadeIn(
+                  child: GlassCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -88,57 +89,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        context,
-                        'Total',
-                        taskProvider.totalTasks.toString(),
-                        Icons.list_alt,
-                        Colors.blue,
+                FadeIn(
+                  delay: const Duration(milliseconds: 60),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Total',
+                          taskProvider.totalTasks.toString(),
+                          Icons.list_alt,
+                          Colors.blue,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        context,
-                        'Completed',
-                        taskProvider.completedTasks.toString(),
-                        Icons.check_circle,
-                        Colors.green,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Completed',
+                          taskProvider.completedTasks.toString(),
+                          Icons.check_circle,
+                          Colors.green,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        context,
-                        'Pending',
-                        taskProvider.pendingTasks.toString(),
-                        Icons.pending,
-                        Colors.orange,
+                FadeIn(
+                  delay: const Duration(milliseconds: 120),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Pending',
+                          taskProvider.pendingTasks.toString(),
+                          Icons.pending,
+                          Colors.orange,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        context,
-                        'Overdue',
-                        taskProvider.overdueTasks.toString(),
-                        Icons.warning,
-                        Colors.red,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Overdue',
+                          taskProvider.overdueTasks.toString(),
+                          Icons.warning,
+                          Colors.red,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 20),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
+                FadeIn(
+                  delay: const Duration(milliseconds: 180),
+                  child: GlassCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -210,35 +217,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 12),
                   ...taskProvider.tasks.take(3).map((task) {
-                    final subject = subjectProvider.getSubjectById(task.subjectId ?? '');
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: subject?.color ?? Colors.grey,
-                          child: Icon(
-                            task.status == TaskStatus.completed
-                                ? Icons.check
-                                : Icons.pending,
-                            color: Colors.white,
+                    final subject =
+                        subjectProvider.getSubjectById(task.subjectId ?? '');
+                    return FadeIn(
+                      child: GlassCard(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: EdgeInsets.zero,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: subject?.color ?? Colors.grey,
+                            child: Icon(
+                              task.status == TaskStatus.completed
+                                  ? Icons.check
+                                  : Icons.pending,
+                              color: Colors.white,
+                            ),
                           ),
+                          title: Text(task.title),
+                          subtitle: Text(subject?.name ?? 'No subject'),
+                          trailing: task.dueDate != null
+                              ? Text(
+                                  '${task.dueDate!.day}/${task.dueDate!.month}',
+                                  style: TextStyle(
+                                    color: task.dueDate!.isBefore(DateTime.now())
+                                        ? Colors.red
+                                        : null,
+                                  ),
+                                )
+                              : null,
                         ),
-                        title: Text(task.title),
-                        subtitle: Text(subject?.name ?? 'No subject'),
-                        trailing: task.dueDate != null
-                            ? Text(
-                                '${task.dueDate!.day}/${task.dueDate!.month}',
-                                style: TextStyle(
-                                  color: task.dueDate!.isBefore(DateTime.now())
-                                      ? Colors.red
-                                      : null,
-                                ),
-                              )
-                            : null,
                       ),
                     );
                   }),
-                ],
+                ] else
+                  const EmptyState(
+                    icon: Icons.inbox_outlined,
+                    title: 'Nothing here yet',
+                    message:
+                        'Once you add tasks they\'ll show up on your dashboard.',
+                  ),
               ],
             ),
           );
@@ -254,23 +271,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     IconData icon,
     Color color,
   ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
+    return GlassCard(
+      child: Column(
+        children: [
+          Icon(icon, size: 32, color: color),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
       ),
     );
   }
@@ -281,19 +295,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     IconData icon,
     VoidCallback onTap,
   ) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Icon(icon, size: 40, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(height: 8),
-              Text(label, style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
+    return GlassCard(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(icon, size: 40, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 8),
+            Text(label, style: Theme.of(context).textTheme.titleMedium),
+          ],
         ),
       ),
     );
@@ -328,11 +339,16 @@ class TaskSearchDelegate extends SearchDelegate {
 
   Widget _buildResults(BuildContext context) {
     final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-    final subjectProvider = Provider.of<SubjectProvider>(context, listen: false);
+    final subjectProvider =
+        Provider.of<SubjectProvider>(context, listen: false);
     final results = taskProvider.searchTasks(query);
 
     if (results.isEmpty) {
-      return const Center(child: Text('No tasks found'));
+      return const EmptyState(
+        icon: Icons.search_off,
+        title: 'No tasks found',
+        message: 'Try a different search term.',
+      );
     }
 
     return ListView.builder(
@@ -341,33 +357,36 @@ class TaskSearchDelegate extends SearchDelegate {
       itemBuilder: (context, index) {
         final task = results[index];
         final subject = subjectProvider.getSubjectById(task.subjectId ?? '');
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: subject?.color ?? Colors.grey,
-            child: Icon(
-              task.status == TaskStatus.completed ? Icons.check : Icons.pending,
-              color: Colors.white,
+        return GlassCard(
+          padding: EdgeInsets.zero,
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: subject?.color ?? Colors.grey,
+              child: Icon(
+                task.status == TaskStatus.completed
+                    ? Icons.check
+                    : Icons.pending,
+                color: Colors.white,
+              ),
             ),
+            title: Text(task.title),
+            subtitle: Text(subject?.name ?? 'No subject'),
+            trailing: task.dueDate != null
+                ? Text(
+                    '${task.dueDate!.day}/${task.dueDate!.month}',
+                    style: TextStyle(
+                      color: task.dueDate!.isBefore(DateTime.now())
+                          ? Colors.red
+                          : null,
+                    ),
+                  )
+                : null,
+            onTap: () {
+              close(context, null);
+              showTaskDialog(context, task: task);
+            },
           ),
-          title: Text(task.title),
-          subtitle: Text(subject?.name ?? 'No subject'),
-          trailing: task.dueDate != null
-              ? Text(
-                  '${task.dueDate!.day}/${task.dueDate!.month}',
-                  style: TextStyle(
-                    color: task.dueDate!.isBefore(DateTime.now())
-                        ? Colors.red
-                        : null,
-                  ),
-                )
-              : null,
-          onTap: () {
-            close(context, null);
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const TasksScreen()),
-            );
-          },
         );
       },
     );

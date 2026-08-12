@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/custom_theme.dart';
+import '../widgets/gradient_app_bar.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -50,25 +52,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
       name: _nameController.text.trim(),
     );
 
-    if (!mounted) return;
     setState(() => _isLoading = false);
+
+    if (!mounted) return;
 
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error)),
       );
-    } else {
-      authProvider.setSuccessMessage('Account created successfully!');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Account'),
-      ),
-      body: SafeArea(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: CustomTheme.gradientBackground(isDark: isDark),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: const GradientAppBar(title: 'Create Account'),
+        body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -173,6 +176,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

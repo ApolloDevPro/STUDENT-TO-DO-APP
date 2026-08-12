@@ -118,6 +118,36 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
+  // Change password
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'Not signed in.';
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return 'Failed to update password.';
+    }
+  }
+
+  // Send email verification
+  Future<String?> sendEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'Not signed in.';
+      await user.sendEmailVerification();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return 'Failed to send verification email.';
+    }
+  }
+
   // Sign Out
   Future<void> signOut() async {
     await _auth.signOut();
